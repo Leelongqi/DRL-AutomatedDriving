@@ -38,7 +38,7 @@ ______
     对于每个epoch, 一个成功事件意味着两车之间没有发生碰撞或者AV车辆成功完成整个过程。大概在50000个Epochs后，采用AGC的DRL
     成功率达到了80%，并且成功率趋于稳定。而采用RC的DRL训练1700000个Epochs后才能达到80%的成功率，并且随着Epochs训练次数增大，成功率曲线不稳定（训练结果如下图所示）。
 ![](img/SuccessRate.JPG)
-
+- 此项目算法基于论文：Automatically Generated Curriculum based Reinforcement Learning for Autonomous Vehicles in Urban Environment
        
 
     
