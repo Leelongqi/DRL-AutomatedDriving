@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 #####################  hyper parameters  ####################
 
 MAX_STEPS = 1000
-K_EPISODES = 50
+K_EPISODES = 3
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
@@ -68,10 +68,9 @@ class AGC_DRL(object):
 
     def choose_action(self, s):
         s = np.array(s)
-
         a = self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
-        if a< -3:
-            a= -3
+        if a< -2:
+            a = -2
         elif a > 2:
             a = 2
         return a
@@ -122,15 +121,18 @@ DDPG = AGC_DRL(a_dim=1, s_dim=6, )
 # List every Task'mean reward
 E_Totall_R = 0
 V = []
-
+E_S = []
 for t in range(Target_Ego_MDP.TASK_NUM):
-    env = Target_Ego(TaskNum=t)
-    s = env.reset(TaskNum=t)
+    env = Target_Ego(task_num=t)
+    s = env.reset(task_num=t)
     for i in range(MAX_STEPS):
         if env.IsCrash or env.done:
-            s = env.reset(TaskNum=t)
-        a = DDPG.choose_action(s)
+            s = env.reset(task_num=t)
+        a = DDPG.choose_action(s)[0]
+        print('a:%s'% a)
+        print('edsl:%s'% env.edsl)
         r = env.get_env_feedback(a)
+        print('r:%s' % r)
         s_ = env.E_choose_state(a)
         DDPG.store_transition(s, a, r, s_)
         if DDPG.memory_counter > MEMORY_SIZE:
@@ -143,6 +145,7 @@ Dict = {}
 Success_Rates = []
 Event_Num = 0
 Success_Num = 0
+
 for k in range(K_EPISODES):
     Ve = [math.exp(v) for v in V]
     P = [ve/sum(Ve) for ve in Ve]
@@ -155,16 +158,17 @@ for k in range(K_EPISODES):
             print('第%d次迭代选择了第%d个任务'%(k,t))
             break
     # selected task id = t
-    env = Target_Ego(TaskNum=t)
-    s = env.reset(TaskNum=t)
+    env = Target_Ego(task_num=t)
+    s = env.reset(task_num=t)
     # training DDPG network
     for i in range(MAX_STEPS):
         if env.IsCrash or env.done:
             Event_Num += 1
             if env.done:
+                E_S.append(env.edsl)
                 Success_Num += 1
-            s = env.reset(TaskNum=t)
-        a = DDPG.choose_action(s)
+            s = env.reset(task_num=t)
+        a = DDPG.choose_action(s)[0]
         r = env.get_env_feedback(a)
         s_ = env.E_choose_state(a)
         DDPG.store_transition(s, a, r, s_)
@@ -172,26 +176,27 @@ for k in range(K_EPISODES):
             DDPG.learn()
         s = s_
     for t_idx in range(Target_Ego_MDP.TASK_NUM):
-        t_env = Target_Ego(TaskNum=t_idx)
-        t_s = t_env.reset(TaskNum=t_idx)
+        t_env = Target_Ego(task_num=t_idx)
+        t_s = t_env.reset(task_num=t_idx)
         t_E_Totall_R = 0
         for i in range(MAX_STEPS):
             if t_env.IsCrash or t_env.done:
                 Event_Num += 1
                 if env.done:
+                    E_S.append(env.edsl)
                     Success_Num += 1
-                t_s = t_env.reset(TaskNum=t_idx)
-            t_a = DDPG.max_q_action(t_s, t_env.sample_a(100, -3, 2))
+                t_s = t_env.reset(task_num=t_idx)
+            t_a = DDPG.max_q_action(t_s, t_env.sample_a(100, -3, 2))[0]
             t_r = t_env.get_env_feedback(t_a)
             t_s_ = t_env.E_choose_state(t_a)
             t_s = t_s_
             t_E_Totall_R += t_r
-        Mean_R = list(t_E_Totall_R/MAX_STEPS)
+        Mean_R = t_E_Totall_R/MAX_STEPS
         print('第%d个任务的平均Reward是%s' % (t_idx, Mean_R))
         if t_idx not in Dict:
-            Dict[t_idx] = Mean_R
+            Dict[t_idx] = [Mean_R]
         else:
-            Dict[t_idx].append(Mean_R[0])
+            Dict[t_idx].append(Mean_R)
         print(Dict)
         # update every task V value
         V[t_idx] = ALPHA*(t_E_Totall_R/MAX_STEPS) + (1-ALPHA)*V[t_idx]
@@ -199,6 +204,8 @@ for k in range(K_EPISODES):
     Success_Rates.append(Success_Num / Event_Num)
 
 plt.plot([k for k in range(K_EPISODES)], Success_Rates)
+plt.show()
+plt.plot([j for j in range(len(E_S))], E_S)
 plt.show()
 
 
