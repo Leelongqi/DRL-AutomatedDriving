@@ -1,88 +1,90 @@
 import numpy as np
 #####################  hyper parameters  ####################
-Target_InitPos = 0
-Target_Speed = 10
-Ego_Speed = 8
-Task_Length = 6
+TARGET_INITPOS = 25
+TARGET_SPEED = 10
+EGO_SPEED = 0
+TASK_LENGTH = 6
 TASK_NUM = 5
-Update_Time = 0.1
-E_Dlb = 20
-Road_Way = 50
-Road_Width = 7.2
-Road_Length = 100
-Vehicle_Width = 2
-Vehicle_Length = 4
+UPDATE_TIME = 0.1
+ROAD_LENGTH = 50
+ROAD_WIDTH = 7.2
+VEHICLE_WIDTH = 2
+VEHICLE_LENGTH = 4
+ZEBRALINE_WIDTH = 4
 MAX_TIME = 50
 
 class Target_Ego(object):
-    def __init__(self, T_pos = Target_InitPos, T_v =Target_Speed, t=Update_Time, E_v = Ego_Speed, Task_l = Task_Length,
-                 E_dlb = E_Dlb, Road_way = Road_Way, Road_w=Road_Width, Road_l = Road_Length,
-                 V_w = Vehicle_Width, V_l = Vehicle_Length,TaskNum = TASK_NUM,):
-        self.TA = T_v # Tagert车辆的动作/速度
-        self.Ti = t # 车辆的更新时间
-        self.Ev = E_v # 本车速度
-        self.Taskl = Task_l
-        self.TS = T_pos + TaskNum * self.Taskl  # Target 车辆的位置
-        self.Edlb = E_dlb # 本车到低边界的距离
-        self.Roadway = Road_way # 停止线到低边界的距离
-        self.Roadwidth = Road_w # 两车道的宽度
-        self.Roadlength = Road_l # 一条道路总长度
-        self.Vehiclewidth = V_w # 车辆的宽度
-        self.Vehiclelength = V_l # 车辆的长度
-        self.TaskNum = TaskNum
-        self.Edhb = self.Roadlength - self.Edlb
-        self.Edsl = self.Roadway-self.Edlb
+    def __init__(self, task_num=TASK_NUM,):
+        self.target_speed = TARGET_SPEED  # 目标车辆的动作/速度
+        self.t = UPDATE_TIME  # 车辆的更新时间
+        self.ego_speed = EGO_SPEED  # 本车速度
+        self.task_length = TASK_LENGTH  # 一个任务的长度
+        self.task_num = task_num  # 任务数量
+        self.target_pos = TARGET_INITPOS + self.task_num * self.task_length  # 目标车辆的初始位置
+        self.road_width = ROAD_WIDTH  # 两车道的宽度
+        self.road_length = ROAD_LENGTH  # 下边界到隔离带的车道长度
+        self.vehicle_width = VEHICLE_WIDTH  # 车辆的宽度
+        self.vehicle_length = VEHICLE_LENGTH  # 车辆的长度
+        self.zebraline_width = ZEBRALINE_WIDTH  # 斑马线宽度
+        self.edlb = self.road_length - self.zebraline_width  # 本车到下边界的距离
+        self.edhb = self.road_length*2 + self.road_width - self.edlb  # 本车到上边界的距离
+        self.edsl = 0
         self.CountTime = 0
         self.IsCrash = False
         self.done = False
 
     # Target车辆状态/位置更新
     def T_choose_state(self,):
-        self.s_ = self.TS + self.Ti* self.TA
-        self.TS = self.s_
-        return self.s_
-
-    # 本车状态（Ev,Tv,ttc,Edsl, Edlb, Edhb)
-    def E_choose_state(self, a,):
-        self.Ev = self.Ev + a*self.Ti
-        self.Tv = self.TA
-        self.TS = Target_Ego().T_choose_state()
-        self.TTC = (self.Roadway + 0.75*self.Roadwidth-0.5*self.Vehiclewidth - self.TS)/self.Tv
-        self.Edsl = (self.Roadway-self.Edlb)-(self.Ev*self.Ti + 0.5*a*self.Ti**2)
-        self.Edlb = self.Edlb + (self.Ev*self.Ti + 0.5*a*self.Ti**2)
-        self.Edhb = self.Roadlength - self.Edlb - (self.Ev*self.Ti + 0.5*a*self.Ti**2)
-        self.s_ = [self.Ev, self.Tv, self.TTC, self.Edsl, self.Edlb, self.Edhb]
-        self.CountTime += 0.1
-        if self.Edhb - self.Roadway + self.Vehiclelength/2 < 0:
-            self.done = True
-        return self.s_
-
-    def reset(self,TaskNum):
-        self.TaskNum = TaskNum
-        self.Ev = Ego_Speed
-        self.Tv = Target_Speed
-        self.TTC = (self.Roadway + 0.75*self.Roadwidth-0.5*self.Vehiclewidth - self.TS)/self.Tv
-        self.Edlb = E_Dlb
-        self.Edsl = self.Roadway - self.Edlb
-        self.Edhb = self.Roadlength - self.Edlb
-        self.CountTime = 0
-        self.IsCrash = False
-
-        self.s = [self.Ev, self.Tv, self.TTC, self.Edsl, self.Edlb, self.Edhb]
+        self.s = self.target_pos + self.target_speed * self.t
+        self.target_pos = self.s
         return self.s
 
-    def get_env_feedback(self, a, c1=0.1, c2=0.1, c3=0.1, c4=-0.1, c5 = -0.2,  T_react= 2, ):
+    # 本车状态（Ev,Tv,ttc,Edsl,Edlb,Edhb)
+    def E_choose_state(self, a,):
+        self.ego_speed = self.ego_speed + a*self.t
+        if self.ego_speed < 0:
+            self.ego_speed = 0
+            a = 0
+        self.target_speed = self.target_speed
+        self.target_s = Target_Ego().T_choose_state()
+        self.ttc = (self.road_length + 0.75*self.road_width - self.target_s)/self.target_speed
+        self.edsl = self.edsl + self.ego_speed*self.t + 0.5*a*self.t**2
+
+        self.edlb = self.edlb + (self.ego_speed*self.t + 0.5*a*self.t**2)
+        self.edhb = self.edhb - (self.ego_speed*self.t + 0.5*a*self.t**2)
+        self.s_ = [self.ego_speed, self.target_speed, self.ttc, self.edsl, self.edlb, self.edhb]
+        self.CountTime += 0.1
+        return self.s_
+
+    def reset(self, task_num):
+        self.task_num = task_num
+        self.ego_speed = EGO_SPEED
+        self.target_speed = TARGET_SPEED
+        self.target_pos = TARGET_INITPOS + self.task_num * self.task_length  # 目标车辆的初始位置
+        self.ttc = (self.road_length + 0.75*self.road_width - self.target_pos)/self.target_speed
+        self.edsl = 0
+        self.edlb = self.road_length - self.zebraline_width  # 本车到下边界的距离
+        self.edhb = self.road_length * 2 + self.road_width - self.edlb  # 本车到上边界的距离
+        self.CountTime = 0
+        self.s = [self.ego_speed, self.target_speed, self.ttc, self.edsl, self.edlb, self.edhb]
+        self.IsCrash = False
+        self.done = False
+        return self.s
+
+    def get_env_feedback(self, a, c1=1, c2=1, c3=0.1, c4=-2, c5=-2, c6=2, T_react= 2, ):
         self.c1 = c1 # constant
         self.c2 = c2 # constant
         self.c3 = c3 # constant
         self.c4 = c4 # constant reward
         self.T_react = T_react
         self.c5 = c5
+        self.c6 = c6
 
         # reward1
-        d1 = self.Edhb **2
-        d2 = (self.Roadlength - self.Edlb)**2
-        R1 = self.c1*(d1/d2) - self.c2
+        D_des_ego = self.road_width + self.zebraline_width + self.vehicle_length - self.edsl
+        D_des_init = self.road_width + self.zebraline_width + self.vehicle_length
+        R = self.c1*(D_des_ego**2/D_des_init**2) - self.c2
+        '''
         # reward2
         self.Dsafe = self.TA * self.T_react
         D_TE = (self.Ev*self.Ti + 0.5*a*self.Ti**2)**2
@@ -92,17 +94,22 @@ class Target_Ego(object):
             R2 = -(R1 + 0)
         # reward3 /crash
         R = R1 +R2
-        if self.Edlb - 0.5*(self.Vehiclewidth+ self.Vehiclelength) <= self.T_choose_state() <= \
-                self.Edlb + 0.5*(self.Vehiclewidth+ self.Vehiclelength)\
-                and self.Roadway+0.75*self.Roadwidth- 0.5*(self.Vehiclelength+ self.Vehiclewidth) <= self.Edlb <=\
-                self.Roadway+0.75*self.Roadwidth + 0.5*(self.Vehiclelength+ self.Vehiclewidth):
+        '''
+        if self.road_length + 0.75*self.road_width - 0.5*self.vehicle_width <= self.T_choose_state()\
+                <= self.road_length + 0.75 * self.road_width + 0.5 * self.vehicle_width + self.vehicle_length and \
+                self.road_length + 0.25*self.road_width - 0.5*self.vehicle_width <= self.edlb <= self.road_length + \
+                0.25*self.road_width + 0.5*self.vehicle_width + self.vehicle_length:
             R3 = self.c4
             R = R + R3
             self.IsCrash = True
-        if self.Edhb - self.Roadway >0 and self.CountTime >= MAX_TIME:
+        if D_des_ego > 0 and self.CountTime >= MAX_TIME:
             R4 = self.c5
             R = R +R4
             self.IsCrash = True
+        if D_des_ego <= 0:
+            R5 = self.c6
+            R = R + R5
+            self.done = True
         return R
 
     def sample_a(self, size, lb, ub):
